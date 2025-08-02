@@ -12,5 +12,6 @@ public class AppSettings
 public class ProviderConfig
 {
     public required string Type { get; set; }
+    public required string ContainerName { get; set; }
     public JsonElement Settings { get; set; }
 }

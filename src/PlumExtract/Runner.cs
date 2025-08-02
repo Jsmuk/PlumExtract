@@ -28,7 +28,7 @@ public class Runner
     public async Task RunAsync(string[] args)
     {
         var sourceBlobStore = _blobProviderFactory.Create(_appSettings.Source.Type, _appSettings.Source.Settings);
-        var sourceContainer = sourceBlobStore.GetContainer();
+        var sourceContainer = sourceBlobStore.GetContainer(_appSettings.Source.ContainerName);
         var files = await sourceContainer.ListBlobsAsync("*.pdf");
 
         var statements = new List<Statement>();
@@ -68,8 +68,7 @@ public class Runner
         summaries = summaries.OrderBy(x => x.StartDate).ToList();
         
         var targetBlobStore = _blobProviderFactory.Create(_appSettings.Target.Type, _appSettings.Target.Settings);
-        var targetContainer = targetBlobStore.GetContainer();
-
+        var targetContainer = targetBlobStore.GetContainer(_appSettings.Target.ContainerName);
 
         // TODO (Eventually) this should follow the same pattern as the storage providers and be an output provider 
         
