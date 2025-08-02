@@ -1,4 +1,4 @@
-name: Build and Sonar Analysis
+name: Build, Test & SonarCloud (Debug Coverage)
 
 on:
   push:
@@ -8,8 +8,7 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  test:
-    name: Build and Test
+  build-test-sonar:
     runs-on: windows-latest
 
     steps:
@@ -23,75 +22,50 @@ jobs:
         with:
           dotnet-version: '9.0.x'
 
-      - name: Restore
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Debug
-
-      - name: Run tests with coverage
-        run: |
-          mkdir TestResults
-          dotnet test --no-build --configuration Debug --verbosity normal `
-            /p:CollectCoverage=true `
-            /p:CoverletOutputFormat=opencover `
-            /p:CoverletOutput=TestResults/coverage.opencover.xml
-
-      - name: Upload coverage as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: TestResults/coverage.opencover.xml
-
-  
-  sonar:
-    name: SonarCloud Analysis
-    runs-on: windows-latest
-    needs: test
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           java-version: 17
           distribution: 'zulu'
 
-      - name: Download coverage artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage
-          path: coverage-data
+      - name: Install SonarScanner
+        run: dotnet tool update dotnet-sonarscanner --tool-path .sonar
 
-      - name: Cache SonarQube Cloud scanner
-        id: cache-sonar-scanner
-        uses: actions/cache@v4
-        with:
-          path: .\.sonar\scanner
-          key: ${{ runner.os }}-sonar-scanner
-          restore-keys: ${{ runner.os }}-sonar-scanner
-
-      - name: Install SonarQube Scanner
-        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
-        shell: powershell
-        run: |
-          New-Item -Path .\.sonar\scanner -ItemType Directory
-          dotnet tool update dotnet-sonarscanner --tool-path .\.sonar\scanner
-
-      - name: Run SonarCloud analysis
+      - name: Begin SonarCloud analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        shell: powershell
         run: |
-          .\.sonar\scanner\dotnet-sonarscanner begin `
+          .\.sonar\dotnet-sonarscanner begin `
             /k:"Jsmuk_PlumExtract" `
             /o:"jsmuk" `
-            /d:sonar.token="${{ secrets.SONAR_TOKEN }}" `
             /d:sonar.host.url="https://sonarcloud.io" `
-            /d:sonar.cs.opencover.reportsPaths="coverage-data/coverage.opencover.xml" `
-            /d:sonar.exclusions="**/*.Tests.csproj"
-          
+            /d:sonar.token="${{ secrets.SONAR_TOKEN }}" `
+            /d:sonar.cs.cobertura.reportsPaths="coverage/merged-cobertura.xml" `
+            /d:sonar.verbose=true
+
+      - name: Restore and Build
+        run: dotnet build PlumExtract.sln --configuration Debug
+
+      - name: Run Tests with Coverage
+        run: dotnet test PlumExtract.sln --no-build --configuration Debug --collect:"XPlat Code Coverage"
+
+      - name: Copy First Coverage File
+        shell: powershell
+        run: |
+          $coverage = Get-ChildItem -Recurse -Filter "coverage.cobertura.xml" | Select-Object -First 1
+          if (-not $coverage) {
+            Write-Error "❌ No coverage file found!"
+            exit 1
+          }
+          mkdir coverage
+          Copy-Item $coverage.FullName coverage\merged-cobertura.xml
+          Write-Host "✅ Copied coverage report from $($coverage.FullName)"
+
+      - name: Show Coverage File Summary
+        run: |
+          type coverage\merged-cobertura.xml
+
+      - name: End SonarCloud analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: .\.sonar\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
