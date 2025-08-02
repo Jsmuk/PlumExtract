@@ -13,5 +13,6 @@ public class ProviderConfig
 {
     public required string Type { get; set; }
     public required string ContainerName { get; set; }
+    public string? OutputFormat { get; set; }
     public JsonElement Settings { get; set; }
 }

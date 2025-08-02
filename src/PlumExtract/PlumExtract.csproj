@@ -41,22 +41,83 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="OutputFormatters\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\PlumExtract.Storage.FileSystem\PlumExtract.Storage.FileSystem.csproj"
                       ReferenceOutputAssembly="false"
-                      OutputItemType="StoragePluginDll"
+                      OutputItemType="StoragePlugin"
+                      CopyLocal="true" />
+
+    <ProjectReference Include="..\PlumExtract.Formatter.Csv\PlumExtract.Formatter.Csv.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="FormatPlugin"
                       CopyLocal="true" />
   </ItemGroup>
 
-  <Target Name="CopyStoragePluginDlls" AfterTargets="Build">
+  <Target Name="CopyStoragePlugin" AfterTargets="Build">
+    <!-- Get DLL -->
+    <MSBuild Projects="..\PlumExtract.Storage.FileSystem\PlumExtract.Storage.FileSystem.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="StoragePluginDll" />
+    </MSBuild>
+
+    <!-- Get NuGet deps -->
+    <MSBuild Projects="..\PlumExtract.Storage.FileSystem\PlumExtract.Storage.FileSystem.csproj"
+             Targets="ResolveReferences"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="StoragePluginRefs" />
+    </MSBuild>
+
+    <!-- Copy DLL -->
     <Copy SourceFiles="@(StoragePluginDll)"
-          DestinationFolder="$(OutputPath)StorageProviders"
-          SkipUnchangedFiles="true" />
+          DestinationFiles="@(StoragePluginDll->'$(OutputPath)StorageProviders\PlumExtract.Storage.FileSystem\%(Filename)%(Extension)')" />
+
+    <!-- Copy NuGet-only deps -->
+    <ItemGroup>
+      <StorageNuGets Include="@(StoragePluginRefs)"
+                     Condition="'%(StoragePluginRefs.NuGetPackageId)' != '' and '%(StoragePluginRefs.PackageSource)' != 'Microsoft.NETCore.App'" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(StorageNuGets)"
+          DestinationFiles="@(StorageNuGets->'$(OutputPath)StorageProviders\PlumExtract.Storage.FileSystem\%(Filename)%(Extension)')" />
   </Target>
 
-  <Target Name="CopyStoragePluginDllsToPublish" AfterTargets="Publish">
-    <Copy SourceFiles="@(StoragePluginDll)"
-          DestinationFolder="$(PublishDir)StorageProviders"
-          SkipUnchangedFiles="true" />
+  <Target Name="CopyFormatPlugin" AfterTargets="Build">
+    <!-- Get DLL -->
+    <MSBuild Projects="..\PlumExtract.Formatter.Csv\PlumExtract.Formatter.Csv.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="FormatPluginDll" />
+    </MSBuild>
+
+    <!-- Get NuGet deps -->
+    <MSBuild Projects="..\PlumExtract.Formatter.Csv\PlumExtract.Formatter.Csv.csproj"
+             Targets="ResolveReferences"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="FormatPluginRefs" />
+    </MSBuild>
+
+    <!-- Copy DLL -->
+    <Copy SourceFiles="@(FormatPluginDll)"
+          DestinationFiles="@(FormatPluginDll->'$(OutputPath)FormatProviders\PlumExtract.Formatter.Csv\%(Filename)%(Extension)')" />
+
+    <!-- Copy NuGet-only deps -->
+    <ItemGroup>
+      <FormatNuGets Include="@(FormatPluginRefs)"
+                    Condition="'%(FormatPluginRefs.NuGetPackageId)' != '' and '%(FormatPluginRefs.PackageSource)' != 'Microsoft.NETCore.App'" />
+    </ItemGroup>
+    
+    <Copy SourceFiles="@(FormatNuGets)"
+          DestinationFiles="@(FormatNuGets->'$(OutputPath)FormatProviders\PlumExtract.Formatter.Csv\%(Filename)%(Extension)')" />
+
+    <Message Importance="High" Text="NuGet dep: %(StoragePluginRefs.Identity), NuGetPackageId=%(StoragePluginRefs.NuGetPackageId), PackageSource=%(StoragePluginRefs.PackageSource)" />
+
   </Target>
 
 </Project>

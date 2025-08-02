@@ -1,5 +1,4 @@
 ﻿using System.Globalization;
-using CsvHelper;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PlumExtract.Application.Services;
@@ -12,21 +11,27 @@ namespace PlumExtract;
 public class Runner
 {
     private readonly IBlobProviderFactory _blobProviderFactory;
+    private readonly IOutputFormatterFactory _outputFormatterFactory;
     private readonly AppSettings _appSettings;
     private readonly ILogger<Runner> _logger;
     private readonly PdfStatementParser _parser;
 
     
-    public Runner(IBlobProviderFactory blobProviderFactory, IOptions<AppSettings> appSettings, ILogger<Runner> logger, PdfStatementParser parser)
+    public Runner(IBlobProviderFactory blobProviderFactory, IOptions<AppSettings> appSettings, ILogger<Runner> logger, PdfStatementParser parser, IOutputFormatterFactory outputFormatterFactory)
     {
         _appSettings = appSettings.Value;
         _blobProviderFactory = blobProviderFactory;
         _logger = logger;
         _parser = parser;
+        _outputFormatterFactory = outputFormatterFactory;
     }
 
     public async Task RunAsync(string[] args)
     {
+        if (_appSettings.Target.OutputFormat is null)
+        {
+            throw new Exception("Target.OutputFormat is null");
+        }
         var sourceBlobStore = _blobProviderFactory.Create(_appSettings.Source.Type, _appSettings.Source.Settings);
         var sourceContainer = sourceBlobStore.GetContainer(_appSettings.Source.ContainerName);
         var files = await sourceContainer.ListBlobsAsync("*.pdf");
@@ -53,34 +58,18 @@ public class Runner
             }
         }
         
-        var summaries = new List<CsvExportSummary>();
-        foreach (var statement in statements)
-        {
-            summaries.Add(new CsvExportSummary
-            {
-                StartDate = statement.StartDate,
-                EndDate = statement.EndDate,
-                ClosingBalance = statement.BalanceSummary!.ClosingBalance,
-                TotalTransactions = statement.Transactions.Count,
-            });
-        }
-        
-        summaries = summaries.OrderBy(x => x.StartDate).ToList();
+
         
         var targetBlobStore = _blobProviderFactory.Create(_appSettings.Target.Type, _appSettings.Target.Settings);
         var targetContainer = targetBlobStore.GetContainer(_appSettings.Target.ContainerName);
 
-        // TODO (Eventually) this should follow the same pattern as the storage providers and be an output provider 
+        var outputFormatter = _outputFormatterFactory.Create(_appSettings.Target.OutputFormat);
         
-        await using var ms = new MemoryStream();
-        await using var writer = new StreamWriter(ms);
-        await using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+        await using var formatResult = await outputFormatter.FormatSummaryAsync(statements);
+        await targetContainer.WriteAsync(formatResult.BlobName, formatResult.OutputStream);    
         
-        await csv.WriteRecordsAsync(summaries);
-        await writer.FlushAsync();
-        ms.Position = 0;
-        
-        await targetContainer.WriteAsync("output.csv", ms);
+        await using var formatResultTransactions = await outputFormatter.FormatTransactionsAsync(statements);
+        await targetContainer.WriteAsync(formatResultTransactions.BlobName, formatResultTransactions.OutputStream); 
         
         await Task.CompletedTask;
     }

@@ -10,9 +10,10 @@ using PlumExtract.Domain.Configuration;
 using PlumExtract.Domain.Interfaces;
 using Serilog;
 
-StorageProviderLoader.LoadStorageProviders(Path.Combine(AppContext.BaseDirectory, "StorageProviders"));
-
 var builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.RegisterStorageProviders();
+builder.Services.RegisterOutputFormatters();
 
 builder.Logging.ClearProviders();
 builder.Logging.AddSerilog(new LoggerConfiguration()
@@ -24,6 +25,7 @@ builder.Logging.AddSerilog(new LoggerConfiguration()
 builder.Services.AddTransient<Runner>();
 builder.Services.AddSingleton<PdfStatementParser>();
 builder.Services.AddSingleton<IBlobProviderFactory, BlobProviderFactory>();
+builder.Services.AddSingleton<IOutputFormatterFactory, OutputFormatterFactory>();
 
 builder.Services.Configure<AppSettings>(options =>
 {

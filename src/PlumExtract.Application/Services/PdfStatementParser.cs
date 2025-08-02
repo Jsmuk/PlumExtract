@@ -99,13 +99,9 @@ public partial class PdfStatementParser
 
                     DateTime.TryParseExact(dateStr + $" {statement.StartDate.Year}", "d MMM yyyy",
                         CultureInfo.InvariantCulture, DateTimeStyles.None, out var date);
-                    var amount1Success = decimal.TryParse(amountStr1, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount1);
-                    var amount2Success = decimal.TryParse(amountStr2, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount2);
-
-                    if (!amount1Success || !amount2Success)
-                    {
-                        _logger.LogError("Failed to parse amount1/amount2");
-                    }
+                    _ = decimal.TryParse(amountStr1, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount1);
+                    _ = decimal.TryParse(amountStr2, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount2);
+                    
                     
                     decimal moneyIn = 0;
                     decimal moneyOut = 0;

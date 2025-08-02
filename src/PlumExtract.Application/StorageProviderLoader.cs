@@ -1,28 +1,45 @@
 ﻿using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
+using PlumExtract.Domain.Interfaces;
 using Serilog;
-using Serilog.Core;
 
 namespace PlumExtract.Application;
 
 public static class StorageProviderLoader
 {
-    public static void LoadStorageProviders(string folder)
+    public static IServiceCollection RegisterStorageProviders(this IServiceCollection services)
     {
-        if (!Directory.Exists(folder))
+        var path = Path.Combine(AppContext.BaseDirectory, "StorageProviders");
+        
+        if (!Directory.Exists(path))
         {
-            return;
+            return services;
         }
 
-        foreach (var dll in Directory.EnumerateFiles(folder, "*.dll"))
+        foreach (var dll in Directory.EnumerateFiles(path, "PlumExtract.Storage.*.dll", SearchOption.AllDirectories))
         {
             try
             {
-                Assembly.LoadFrom(dll);
+                var loadContext = new PluginLoadContext(dll);
+                var assembly = loadContext.LoadFromAssemblyPath(dll);
+
+                var providerTypes = assembly.GetTypes()
+                    .Where(t => typeof(IBlobStore).IsAssignableFrom(t) &&
+                                t is { IsInterface: false, IsAbstract: false })
+                    .ToList();
+                
+                foreach (var type in providerTypes)
+                {
+                    services.AddTransient(type);
+                }
+                
             }
             catch (Exception ex)
             {
                 Log.Logger.Error(ex, "Failed to load storage provider {DllName}", dll);
             }
         }
+        
+        return services;
     }
 }
