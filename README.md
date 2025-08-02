@@ -1,5 +1,8 @@
 # 🍑 Plum Extract  
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)  
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=Jsmuk_PlumExtract&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=Jsmuk_PlumExtract)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=Jsmuk_PlumExtract&metric=coverage)](https://sonarcloud.io/summary/new_code?id=Jsmuk_PlumExtract)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=Jsmuk_PlumExtract&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=Jsmuk_PlumExtract)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 

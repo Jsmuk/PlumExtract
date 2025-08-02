@@ -1,4 +1,6 @@
 ﻿using System.Reflection;
+using Serilog;
+using Serilog.Core;
 
 namespace PlumExtract.Application;
 
@@ -13,8 +15,14 @@ public static class StorageProviderLoader
 
         foreach (var dll in Directory.EnumerateFiles(folder, "*.dll"))
         {
-            // TODO: Error handling
-            Assembly.LoadFrom(dll);
+            try
+            {
+                Assembly.LoadFrom(dll);
+            }
+            catch (Exception ex)
+            {
+                Log.Logger.Error(ex, "Failed to load storage provider {DllName}", dll);
+            }
         }
     }
 }

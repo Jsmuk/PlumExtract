@@ -1,5 +1,6 @@
 ﻿using System.Globalization;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using PlumExtract.Domain.Models;
 using UglyToad.PdfPig;
 
@@ -7,6 +8,13 @@ namespace PlumExtract.Application.Services;
 
 public partial class PdfStatementParser
 {
+    private readonly ILogger<PdfStatementParser> _logger;
+
+    public PdfStatementParser(ILogger<PdfStatementParser> logger)
+    {
+        _logger = logger;
+    }
+
     public Statement ExtractStatement(Stream stream, string fileName)
     {
         var patterns = GetLinePatterns();
@@ -15,9 +23,6 @@ public partial class PdfStatementParser
             OriginalFileName = fileName
         };
         
-        var inBalanceSummary = false;
-        var inTransactions = false;
-
         var inferredPeriod = GetPeriodFromFilename(fileName);
         if (inferredPeriod.HasValue)
         {
@@ -62,17 +67,23 @@ public partial class PdfStatementParser
                 Handler = (match, statement) =>
                 {
                     var pocket = match.Groups[1].Value;
-                    decimal.TryParse(match.Groups[2].Value, out var inAmt);
-                    decimal.TryParse(match.Groups[3].Value, out var outAmt);
-                    decimal.TryParse(match.Groups[4].Value, out var closing);
-
-                    statement.BalanceSummary = new BalanceSummary
+                    var inSuccess = decimal.TryParse(match.Groups[2].Value, out var inAmt);
+                    var outSuccess = decimal.TryParse(match.Groups[3].Value, out var outAmt);
+                    var closingSuccess = decimal.TryParse(match.Groups[4].Value, out var closing);
+                    if (!inSuccess || !outSuccess || !closingSuccess)
                     {
-                        Pocket = pocket,
-                        MoneyIn = inAmt,
-                        MoneyOut = outAmt,
-                        ClosingBalance = closing
-                    };
+                        _logger.LogError("Failed to parse inAmt/outAmt/closing");
+                    }
+                    else
+                    {
+                        statement.BalanceSummary = new BalanceSummary
+                        {
+                            Pocket = pocket,
+                            MoneyIn = inAmt,
+                            MoneyOut = outAmt,
+                            ClosingBalance = closing
+                        };
+                    }
                 }
             },
             new()
@@ -88,9 +99,14 @@ public partial class PdfStatementParser
 
                     DateTime.TryParseExact(dateStr + $" {statement.StartDate.Year}", "d MMM yyyy",
                         CultureInfo.InvariantCulture, DateTimeStyles.None, out var date);
-                    decimal.TryParse(amountStr1, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount1);
-                    decimal.TryParse(amountStr2, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount2);
+                    var amount1Success = decimal.TryParse(amountStr1, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount1);
+                    var amount2Success = decimal.TryParse(amountStr2, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount2);
 
+                    if (!amount1Success || !amount2Success)
+                    {
+                        _logger.LogError("Failed to parse amount1/amount2");
+                    }
+                    
                     decimal moneyIn = 0;
                     decimal moneyOut = 0;
 
@@ -148,7 +164,7 @@ public partial class PdfStatementParser
                || description.Equals("Interest", StringComparison.OrdinalIgnoreCase);
     }
     
-    private (DateOnly Start, DateOnly End)? GetPeriodFromFilename(string filePath)
+    private static (DateOnly Start, DateOnly End)? GetPeriodFromFilename(string filePath)
     {
         var filename = Path.GetFileNameWithoutExtension(filePath); 
         // Edge case: Plum uses Sept for September, breaking the pattern for the other 11.. e.g. Sept2021_Plum_Saving
