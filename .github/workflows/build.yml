@@ -1,4 +1,4 @@
-name: Build, Test & SonarCloud (Debug Coverage)
+name: Build, Test & SonarCloud (dotCover)
 
 on:
   push:
@@ -12,12 +12,12 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup .NET
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
@@ -28,44 +28,71 @@ jobs:
           java-version: 17
           distribution: 'zulu'
 
+      - name: Install dotCover global tool
+        run: dotnet tool install --global JetBrains.dotCover.CommandLineTools
+
+      - name: Install ReportGenerator
+        run: dotnet tool install --global dotnet-reportgenerator-globaltool
+
+      - name: Add .dotnet/tools to PATH
+        run: echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8
+
       - name: Install SonarScanner
-        run: dotnet tool update dotnet-sonarscanner --tool-path .sonar
+        shell: powershell
+        run: |
+          New-Item -Path .\.sonar\scanner -ItemType Directory
+          dotnet tool update dotnet-sonarscanner --tool-path .\.sonar\scanner
 
       - name: Begin SonarCloud analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        shell: powershell
         run: |
-          .\.sonar\dotnet-sonarscanner begin `
+          .\.sonar\scanner\dotnet-sonarscanner begin `
             /k:"Jsmuk_PlumExtract" `
             /o:"jsmuk" `
             /d:sonar.host.url="https://sonarcloud.io" `
-            /d:sonar.token="${{ secrets.SONAR_TOKEN }}" `
-            /d:sonar.cs.cobertura.reportsPaths="coverage/merged-cobertura.xml" `
+            /d:sonar.login="${{ secrets.SONAR_TOKEN }}" `
+            /d:sonar.cs.dotcover.reportsPaths="coverage/report/SonarQube.xml" `
             /d:sonar.verbose=true
 
-      - name: Restore and Build
-        run: dotnet build PlumExtract.sln --configuration Debug
+      - name: Restore dependencies
+        run: dotnet restore PlumExtract.sln
 
-      - name: Run Tests with Coverage
-        run: dotnet test PlumExtract.sln --no-build --configuration Debug --collect:"XPlat Code Coverage"
+      - name: Build solution
+        run: dotnet build PlumExtract.sln --configuration Debug --no-restore
 
-      - name: Copy First Coverage File
+      - name: Run tests with dotCover
+        run: |
+          dotCover cover `
+            --TargetExecutable="C:\Program Files\dotnet\dotnet.exe" `
+            --TargetArguments="test PlumExtract.sln --no-build --configuration Debug" `
+            --Output="coverage/dotCover.dcvr" `
+            --WorkingDir="${{ github.workspace }}" `
+            --ReturnTargetExitCode
+
+      - name: Convert dotCover to Sonar-compatible XML
+        run: |
+          reportgenerator `
+            -reports:coverage/dotCover.dcvr `
+            -targetdir:coverage/report `
+            -reporttypes:SonarQube `
+            -assemblyfilters:+* `
+            -filefilters:+* `
+            -sourcedirs:${{ github.workspace }} `
+            -verbosity:Info
+
+      - name: Preview SonarQube report
         shell: powershell
         run: |
-          $coverage = Get-ChildItem -Recurse -Filter "coverage.cobertura.xml" | Select-Object -First 1
-          if (-not $coverage) {
-            Write-Error "❌ No coverage file found!"
+          if (-not (Test-Path "coverage/report/SonarQube.xml")) {
+            Write-Error "❌ SonarQube.xml not found!"
             exit 1
           }
-          mkdir coverage
-          Copy-Item $coverage.FullName coverage\merged-cobertura.xml
-          Write-Host "✅ Copied coverage report from $($coverage.FullName)"
-
-      - name: Show Coverage File Summary
-        run: |
-          type coverage\merged-cobertura.xml
+          Write-Host "✅ SonarQube report preview:"
+          Get-Content coverage/report/SonarQube.xml -TotalCount 20
 
       - name: End SonarCloud analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: .\.sonar\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+        run: .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
